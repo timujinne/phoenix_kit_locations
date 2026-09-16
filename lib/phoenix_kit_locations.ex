@@ -90,6 +90,12 @@ defmodule PhoenixKitLocations do
   @impl PhoenixKit.Module
   def css_sources, do: [:phoenix_kit_locations]
 
+  # PhoenixKit.Module.media_reorganizer/0 (core >= 2.24.0, which ships
+  # Storage.Reorganizer). No `@impl`: the core requirement stays `~> 2.0`
+  # and older cores do not define the callback. `ModuleRegistry.all_media_reorganizers/0`
+  # calls this function by name, not through the behaviour.
+  def media_reorganizer, do: PhoenixKitLocations.MediaReorganizer
+
   # Project-extension contribution to the `phoenix_kit_projects` hub — the
   # duck-typed one-way contract (same shape as the dashboards widget
   # contract): its Extensions.Registry discovers this function; no
