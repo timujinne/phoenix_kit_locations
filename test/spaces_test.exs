@@ -14,6 +14,7 @@ defmodule PhoenixKitLocations.SpacesTest do
   use PhoenixKitLocations.DataCase, async: true
 
   alias PhoenixKitLocations.Locations
+  alias PhoenixKitLocations.Schemas.Space
   alias PhoenixKitLocations.Spaces
 
   # ── Helpers ──────────────────────────────────────────────────────
@@ -204,6 +205,51 @@ defmodule PhoenixKitLocations.SpacesTest do
 
       # Rejected before persisting — A's parent is unchanged.
       assert Spaces.get_space(a.uuid).parent_uuid == nil
+    end
+
+    test "a chain deeper than any fixed walk is no cycle" do
+      location = create_location()
+
+      deepest =
+        Enum.reduce(1..70, nil, fn i, parent ->
+          attrs = %{"kind" => "zone", "name" => "Z#{i}"}
+          attrs = if parent, do: Map.put(attrs, "parent_uuid", parent.uuid), else: attrs
+          create_space(location.uuid, attrs)
+        end)
+
+      loose = create_space(location.uuid, %{"kind" => "room", "name" => "Loose"})
+
+      assert {:ok, moved} = Spaces.update_space(loose, %{"parent_uuid" => deepest.uuid})
+      assert moved.parent_uuid == deepest.uuid
+    end
+
+    test "an update keeps the space in its location, whatever the attrs' key shape" do
+      [location, other] = [create_location(), create_location()]
+      space = create_space(location.uuid, %{"kind" => "room", "name" => "Room"})
+
+      assert {:ok, moved} = Spaces.update_space(space, %{name: "Atom", location_uuid: other.uuid})
+      assert moved.name == "Atom"
+      assert moved.location_uuid == location.uuid
+
+      assert {:ok, moved} = Spaces.update_space(space, %{"location_uuid" => other.uuid})
+      assert moved.location_uuid == location.uuid
+    end
+
+    test "a save keeps the folder stored since the form opened" do
+      location = create_location()
+      space = create_space(location.uuid, %{"kind" => "room", "name" => "Room"})
+      folder = Ecto.UUID.generate()
+
+      Repo.update_all(from(s in Space, where: s.uuid == ^space.uuid),
+        set: [data: %{"files_folder_uuid" => folder}]
+      )
+
+      assert {:ok, saved} = Spaces.update_space(space, %{"name" => "Renamed", "data" => %{}})
+      assert saved.data["files_folder_uuid"] == folder
+
+      stale = %{"files_folder_uuid" => Ecto.UUID.generate()}
+      assert {:ok, saved} = Spaces.update_space(space, %{"data" => stale})
+      assert saved.data["files_folder_uuid"] == folder
     end
 
     test "allows reparenting within the same Location when no cycle would result" do
@@ -473,6 +519,16 @@ defmodule PhoenixKitLocations.SpacesTest do
 
       assert Spaces.get_space(r1.uuid) == nil
       assert Spaces.get_space(r2.uuid).uuid == r2.uuid
+    end
+
+    # Another session's delete (or its parent's cascade) lands while this
+    # page still holds the space: its save is refused, not raised.
+    test "updating a space deleted since it was loaded returns :space_not_found" do
+      location = create_location()
+      floor = create_space(location.uuid, %{"kind" => "floor", "name" => "Floor 1"})
+      assert {:ok, _} = Spaces.delete_space(floor)
+
+      assert {:error, :space_not_found} = Spaces.update_space(floor, %{"name" => "Renamed"})
     end
   end
 
