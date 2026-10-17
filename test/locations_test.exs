@@ -59,6 +59,21 @@ defmodule PhoenixKitLocations.LocationsTest do
       assert updated.name == "Updated"
     end
 
+    test "get_location_type/1 treats malformed UUIDs as missing" do
+      assert is_nil(Locations.get_location_type("not-a-uuid"))
+    end
+
+    test "update_location_type/2 returns not-found for a deleted type, even without changes" do
+      t = create_location_type()
+      {:ok, _} = Locations.delete_location_type(t)
+
+      assert {:error, :location_type_not_found} =
+               Locations.update_location_type(t, %{name: "Updated"})
+
+      assert {:error, :location_type_not_found} =
+               Locations.update_location_type(t, %{name: t.name})
+    end
+
     test "delete_location_type/1" do
       t = create_location_type()
       assert {:ok, _} = Locations.delete_location_type(t)
@@ -432,6 +447,68 @@ defmodule PhoenixKitLocations.LocationsTest do
   # Validation edge cases
   # ═══════════════════════════════════════════════════════════════════
 
+  describe "find_similar_addresses — country" do
+    setup do
+      create_location(%{
+        name: "Tallinn Office",
+        address_line_1: "1 Main St",
+        city: "Tallinn",
+        postal_code: "10111",
+        country: "EE"
+      })
+
+      :ok
+    end
+
+    test "a different country is not a duplicate" do
+      assert [] =
+               Locations.find_similar_addresses("1 Main St", "Tallinn", "10111", nil,
+                 country: "FI"
+               )
+    end
+
+    test "the same country is, by code or by legacy name" do
+      assert [%{name: "Tallinn Office"}] =
+               Locations.find_similar_addresses("1 Main St", "Tallinn", "10111", nil,
+                 country: "EE"
+               )
+
+      assert [%{name: "Tallinn Office"}] =
+               Locations.find_similar_addresses("1 Main St", "Tallinn", "10111", nil,
+                 country: "Estonia"
+               )
+    end
+
+    test "a stored row without a country still counts, and so does an omitted country" do
+      create_location(%{
+        name: "Old Row",
+        address_line_1: "9 Old Rd",
+        city: "Tartu",
+        postal_code: "50000"
+      })
+
+      assert [%{name: "Old Row"}] =
+               Locations.find_similar_addresses("9 Old Rd", "Tartu", "50000", nil, country: "EE")
+
+      assert [%{name: "Tallinn Office"}] =
+               Locations.find_similar_addresses("1 Main St", "Tallinn", "10111")
+    end
+  end
+
+  describe "country and state storage" do
+    test "a country and state typed as names are stored as codes" do
+      loc = create_location(%{name: "NY", country: "United States", state: "New York"})
+      reloaded = Locations.get_location(loc.uuid)
+      assert {reloaded.country, reloaded.state} == {"US", "NY"}
+    end
+
+    test "an update that touches neither leaves a stored legacy value alone" do
+      {:ok, loc} = Locations.create_location(%{name: "Legacy", country: "Atlantis"})
+      assert {:ok, updated} = Locations.update_location(loc, %{name: "Legacy 2"})
+      assert updated.country == "Atlantis"
+    end
+  end
+
   describe "changeset validations" do
     test "rejects unknown status values" do
       {:error, cs} = Locations.create_location(%{name: "X", status: "bogus"})
@@ -474,7 +551,8 @@ defmodule PhoenixKitLocations.LocationsTest do
 
       assert reloaded.name == attrs.name
       assert reloaded.city == attrs.city
-      assert reloaded.country == attrs.country
+      # A country typed by name is stored as its ISO code.
+      assert reloaded.country == "JP"
       assert reloaded.public_notes == attrs.public_notes
     end
 
