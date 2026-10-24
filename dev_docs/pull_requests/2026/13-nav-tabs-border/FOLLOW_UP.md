@@ -35,3 +35,27 @@ Read the form's tab import and render, `version/0`, the version test and the
 ## Open
 
 None.
+
+## Claude review (CLAUDE_REVIEW.md)
+Resolution of CLAUDE_REVIEW.md findings. Triaged 2026-10-22.
+
+### Claude review: fixed
+
+- Dropped the stale `WarehouseHeader` reference from the `LocationTabs` moduledoc.
+
+### Claude review: open
+
+- None.
+
+### Claude review: verification
+
+`mix test`: 588 tests, 0 failures. `mix precommit` (compile `--warnings-as-errors`, format, credo `--strict`, dialyzer, deps/hex audit) passed.
+
+## Codex recheck — 2026-10-23
+
+Rechecked both LiveViews, active IDs, navigation URLs and published core; no further code fix needed.
+
+See [CODEX_REVIEW.md](CODEX_REVIEW.md) for independent findings and final validation.
+
+Final verification: `mix test` — 596 tests, 0 failures; `mix precommit`,
+Hex package build and `git diff --check` passed.
