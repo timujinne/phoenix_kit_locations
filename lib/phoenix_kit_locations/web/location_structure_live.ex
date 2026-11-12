@@ -49,6 +49,7 @@ defmodule PhoenixKitLocations.Web.LocationStructureLive do
   alias PhoenixKitLocations.Policy
   alias PhoenixKitLocations.Schemas.Space
   alias PhoenixKitLocations.Spaces
+  alias PhoenixKitLocations.TranslatedData
   alias PhoenixKitWeb.Actor
 
   @space_translatable_fields ~w(name description)
@@ -164,7 +165,7 @@ defmodule PhoenixKitLocations.Web.LocationStructureLive do
 
   def handle_event("validate_space_form", %{"space" => params}, socket) do
     params =
-      merge_translatable_params(params, socket, @space_translatable_fields,
+      TranslatedData.merge_form_params(params, socket, @space_translatable_fields,
         changeset: socket.assigns.space_changeset,
         preserve_fields: @space_preserve_fields
       )
@@ -183,7 +184,7 @@ defmodule PhoenixKitLocations.Web.LocationStructureLive do
 
   def handle_event("update_space_form", %{"space" => params}, socket) do
     params =
-      merge_translatable_params(params, socket, @space_translatable_fields,
+      TranslatedData.merge_form_params(params, socket, @space_translatable_fields,
         changeset: socket.assigns.space_changeset,
         preserve_fields: @space_preserve_fields
       )
@@ -677,10 +678,13 @@ defmodule PhoenixKitLocations.Web.LocationStructureLive do
     gettext(~s(Delete "%{name}"? This cannot be undone.), name: name)
   end
 
+  # `ngettext`: the noun's form follows the count (ru has three, et two).
   defp delete_confirm_message(%{name: name, descendant_count: count}) do
-    gettext(~s(Delete "%{name}" and its %{count} descendants? This cannot be undone.),
-      name: name,
-      count: count
+    ngettext(
+      ~s(Delete "%{name}" and its %{count} descendant? This cannot be undone.),
+      ~s(Delete "%{name}" and its %{count} descendants? This cannot be undone.),
+      count,
+      name: name
     )
   end
 

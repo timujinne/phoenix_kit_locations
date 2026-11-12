@@ -18,6 +18,12 @@ defmodule PhoenixKitLocations.GeoTest do
       assert Geo.normalize_country("日本") == "JP"
     end
 
+    test "maps a name in any language the module ships a catalogue for" do
+      for name <- ~w(Deutschland Alemania Allemagne Germania 德国) do
+        assert Geo.normalize_country(name) == "DE", "#{name} did not map to DE"
+      end
+    end
+
     test "is nil for blank or unknown text" do
       assert Geo.normalize_country(nil) == nil
       assert Geo.normalize_country("  ") == nil
@@ -108,6 +114,22 @@ defmodule PhoenixKitLocations.GeoTest do
       assert Geo.country_name("Atlantis") == "Atlantis"
       assert Geo.country_name("") == nil
       assert Geo.country_name(nil) == nil
+    end
+
+    # `ProjectSitesLive` runs in its own process and sets the locale on the
+    # module's backend only; country names used to follow core's backend
+    # there and came out English beside translated labels.
+    test "follows the module backend's locale, even with core's unset" do
+      {name, label} =
+        Task.async(fn ->
+          Gettext.put_locale(PhoenixKitLocations.Gettext, "ru")
+          {label, "EE"} = Enum.find(Geo.country_options(nil), &(elem(&1, 1) == "EE"))
+          {Geo.country_name("EE"), label}
+        end)
+        |> Task.await()
+
+      assert name == "Эстония"
+      assert String.starts_with?(label, "Эстония")
     end
   end
 

@@ -50,7 +50,8 @@ defmodule PhoenixKitLocations.Geo do
   """
   @spec country_options(String.t() | nil) :: [{String.t(), String.t()}]
   def country_options(current) do
-    CountryData.countries_for_select()
+    [locale: locale()]
+    |> CountryData.countries_for_select()
     |> Enum.map(fn {label, code} -> {strip_flag(label), code} end)
     |> with_current(current)
   end
@@ -75,15 +76,16 @@ defmodule PhoenixKitLocations.Geo do
       value ->
         case country(value) do
           nil -> value
-          %{alpha2: code} -> CountryData.get_country_name(code) || value
+          %{alpha2: code} -> CountryData.get_country_name(code, locale: locale()) || value
         end
     end
   end
 
   @doc """
   The alpha-2 code for a stored or typed country: a code, an alpha-3 code, or a
-  name in English, Estonian, Russian or any of the library's alternative names,
-  matched case-insensitively. `nil` when nothing matches.
+  name in English, any language the module ships a catalogue for, or any of the
+  library's alternative names, matched case-insensitively. `nil` when nothing
+  matches.
   """
   @spec normalize_country(String.t() | nil) :: String.t() | nil
   def normalize_country(value) do
@@ -133,7 +135,7 @@ defmodule PhoenixKitLocations.Geo do
   @spec subdivision_options(String.t() | nil, String.t() | nil) :: [{String.t(), String.t()}]
   def subdivision_options(country_code, current) when is_binary(country_code) do
     country_code
-    |> CountryData.subdivisions_for_select()
+    |> CountryData.subdivisions_for_select(locale: locale())
     |> with_current(current)
   end
 
@@ -269,21 +271,26 @@ defmodule PhoenixKitLocations.Geo do
   # module's other languages or the library's alternative names.
   defp country(value) do
     needle = value |> String.trim() |> String.downcase()
+    locales = name_locales()
 
     Enum.find(BeamLabCountries.all(), fn country ->
       String.downcase(country.alpha2) == needle or String.downcase(country.alpha3) == needle or
-        Enum.any?(country_names(country), &(String.downcase(&1) == needle))
+        Enum.any?(country_names(country, locales), &(String.downcase(&1) == needle))
     end)
   end
 
-  defp country_names(country) do
+  defp country_names(country, locales \\ name_locales()) do
     translated =
-      for locale <- ~w(et ru),
+      for locale <- locales,
           name = BeamLabCountries.Translations.get_name(country.alpha2, locale),
           do: name
 
     [country.name | List.wrap(country.unofficial_names)] ++ translated
   end
+
+  # The languages the module ships a catalogue for, read from the backend so a
+  # new catalogue also maps legacy country text typed in its language ("Deutschland").
+  defp name_locales, do: Gettext.known_locales(PhoenixKitLocations.Gettext) -- ["en"]
 
   # Official, alternative and translated names: the dropdown shows a
   # translation (\"Harju\"), the library's own name is \"Harjumaa\".
@@ -318,9 +325,13 @@ defmodule PhoenixKitLocations.Geo do
 
   defp blank_to_nil(_value), do: nil
 
-  # The viewer's language as a bare code ("et"), for localized names.
+  # The viewer's language as a bare code ("et"), for localized names. Read from
+  # the module's backend, so names follow the module's own labels: core's
+  # `CountryData` defaults to core's backend, which `ProjectSitesLive` (its own
+  # `live_render` process, locale set on this backend only) leaves unset, and
+  # its country names came out English beside translated labels.
   defp locale do
-    Gettext.get_locale() |> String.split(["-", "_"]) |> hd()
+    PhoenixKitLocations.Gettext |> Gettext.get_locale() |> String.split(["-", "_"]) |> hd()
   end
 
   # Literal calls, so `mix gettext.extract` sees every label. An unknown type
